@@ -65,12 +65,36 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .serif{font-family:'Fraunces',serif;}
 
 /* ───── ЭКРАНЫ ───── */
-.screen{display:none;animation:screenIn .5s var(--ease) both;padding-bottom:96px;}
+.screen{
+  display:none;
+  animation:screenIn .5s var(--ease) both;
+  /* снизу отступ = высота навбара + safe-area устройства */
+  padding-bottom:calc(
+    var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) +
+    96px
+  );
+}
 .screen.active{display:block;}
 @keyframes screenIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
 
-/* ───── ШАПКА ───── */
-.topbar{padding:calc(env(safe-area-inset-top) + var(--tg-ct, 0px) + 22px) 22px 6px;}
+/* ───── ФИРМЕННАЯ ПЛАШКА СВЕРХУ ───── */
+/* Sticky: остаётся видима при скролле и перекрывает контент под ней */
+.topbar{
+  position:sticky;
+  top:0;
+  z-index:100;
+  background:var(--paper);
+  /* Telegram автоматически инжектит --tg-safe-area-inset-top и
+     --tg-content-safe-area-inset-top. Используем их как первый приоритет,
+     JS-переменную --tg-ct как второй, env() как fallback. */
+  padding:calc(
+    var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) +
+    var(--tg-content-safe-area-inset-top, var(--tg-ct, 0px)) +
+    14px
+  ) 22px 12px;
+  /* лёгкая тень отделяет шапку от контента при скролле */
+  box-shadow:0 1px 0 var(--line);
+}
 .eyebrow{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:8px;}
 .eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft);}
 .h-title{font-size:34px;font-weight:600;letter-spacing:-.03em;line-height:1.05;}
@@ -120,7 +144,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 /* ───── ОНБОРДИНГ ───── */
 #onboard{position:fixed;inset:0;z-index:1000;background:var(--paper);display:none;flex-direction:column;}
 #onboard.show{display:flex;}
-.ob-screen{flex:1;display:none;flex-direction:column;padding:calc(env(safe-area-inset-top) + var(--tg-ct, 0px) + 40px) 28px 30px;animation:obIn .55s var(--ease) both;}
+.ob-screen{flex:1;display:none;flex-direction:column;padding:calc(var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) + var(--tg-content-safe-area-inset-top, var(--tg-ct, 0px)) + 40px) 28px 30px;animation:obIn .55s var(--ease) both;}
 .ob-screen.active{display:flex;}
 @keyframes obIn{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:none;}}
 .ob-dots{display:flex;gap:7px;margin-bottom:auto;}
@@ -157,7 +181,12 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 
 /* ───── STUDY ───── */
 #screen-study{padding:0;}
-.study-top{display:flex;align-items:center;gap:14px;padding:calc(env(safe-area-inset-top) + var(--tg-ct, 0px) + 16px) 22px 4px;}
+.study-top{
+  display:flex;align-items:center;gap:14px;
+  position:sticky;top:0;z-index:100;background:var(--paper);
+  padding:calc(var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) + var(--tg-content-safe-area-inset-top, var(--tg-ct, 0px)) + 14px) 22px 10px;
+  box-shadow:0 1px 0 var(--line);
+}
 .iconbtn{width:42px;height:42px;border-radius:13px;background:var(--paper-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:19px;transition:transform .25s var(--ease);flex-shrink:0;}
 .iconbtn:active{transform:scale(.92);}
 .study-name{font-size:15px;font-weight:700;letter-spacing:-.01em;}
@@ -191,7 +220,14 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 
 /* ───── РЕЗУЛЬТАТ ───── */
 #screen-result{display:none;}
-#screen-result.active{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:calc(env(safe-area-inset-top) + var(--tg-ct, 0px) + 40px) 28px calc(env(safe-area-inset-bottom) + 40px);text-align:center;}
+#screen-result.active{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;
+  padding:
+    calc(var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) + var(--tg-content-safe-area-inset-top, var(--tg-ct, 0px)) + 40px)
+    28px
+    calc(var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + 100px);
+  text-align:center;
+}
 .res-ring{width:150px;height:150px;position:relative;margin-bottom:26px;}
 .res-ring svg{transform:rotate(-90deg);}
 .res-ring .rc-num{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
@@ -305,6 +341,22 @@ textarea{min-height:128px;line-height:1.5;}
 .mode-share{width:100%;border:1.5px solid var(--line);border-radius:var(--r-md);padding:14px 18px;font-size:14px;font-weight:700;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:8px;margin-top:4px;transition:all .25s;}
 .mode-share:active{background:var(--cloud);}
 
+/* ── Фирменные плашки safe-area ── */
+/* Верхняя плашка: перекрывает контент в зоне уведомлений/шапки Telegram */
+#safe-top{
+  position:fixed;top:0;left:0;right:0;z-index:99;
+  height:calc(var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) + var(--tg-content-safe-area-inset-top, var(--tg-ct, 0px)));
+  background:var(--paper);
+  pointer-events:none;
+}
+/* Нижняя плашка: перекрывает контент под навигацией */
+#safe-bot{
+  position:fixed;bottom:0;left:0;right:0;z-index:99;
+  height:calc(var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+  background:var(--paper);
+  pointer-events:none;
+}
+
 /* ── Add to Home Screen banner ── */
 .hs-banner{margin:0 18px 18px;background:linear-gradient(135deg,var(--ink),var(--ink-soft));border-radius:var(--r-lg);padding:16px 18px;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow-md);position:relative;overflow:hidden;}
 .hs-banner::before{content:"";position:absolute;right:-20px;top:-20px;width:100px;height:100px;border-radius:50%;background:radial-gradient(circle,rgba(58,91,255,.3),transparent 70%);}
@@ -333,7 +385,12 @@ textarea{min-height:128px;line-height:1.5;}
 .hs-step-s{font-size:12.5px;color:var(--muted);font-weight:600;margin-top:3px;}
 
 /* ── test mode screen ── */
-.test-topbar{display:flex;align-items:center;gap:12px;padding:calc(env(safe-area-inset-top) + var(--tg-ct, 0px) + 18px) 18px 14px;}
+.test-topbar{
+  display:flex;align-items:center;gap:12px;
+  position:sticky;top:0;z-index:100;background:var(--paper);
+  padding:calc(var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) + var(--tg-content-safe-area-inset-top, var(--tg-ct, 0px)) + 16px) 18px 12px;
+  box-shadow:0 1px 0 var(--line);
+}
 .test-back{font-size:14px;font-weight:700;color:var(--accent);flex-shrink:0;}
 .test-prog-wrap{flex:1;height:5px;background:var(--line);border-radius:5px;overflow:hidden;}
 .test-prog-wrap i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--violet));border-radius:5px;transition:width .4s var(--ease);}
@@ -536,6 +593,10 @@ textarea{min-height:128px;line-height:1.5;}
 <body>
 
 <!-- ═══════════ SPLASH (загрузка) ═══════════ -->
+<!-- Фирменные плашки safe-area — перекрывают любой контент в опасных зонах -->
+<div id="safe-top"></div>
+<div id="safe-bot"></div>
+
 <div id="splash">
   <div class="sp-logo">
     <div class="sp-card-back"></div>
