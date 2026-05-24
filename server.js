@@ -4,8 +4,9 @@
 //  в карточки (язык, перевод, транскрипция, часть речи, уровень,
 //  пример) → возвращает строгий JSON обратно в Mini App.
 //
-//  Секретный ключ OpenAI берётся из переменной окружения
-//  OPENAI_API_KEY (задаётся в настройках Render, НЕ в коде).
+//  Переменные окружения (Railway → Variables):
+//    OPENAI_API_KEY — ключ OpenAI
+//    BOT_TOKEN      — токен Telegram-бота (от @BotFather)
 // ════════════════════════════════════════════════════════════
 
 import express from "express";
@@ -21,9 +22,50 @@ app.use(express.json({ limit: "1mb" })); // принимаем JSON, огран�
 app.use(express.static(join(__dirname, "public"))); // фронтенд Telegram Mini App
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const MODEL = "gpt-4o-mini";           // дёшево, быстро, хорошо отдаёт JSON
+const BOT_TOKEN      = process.env.BOT_TOKEN;
+const APP_URL        = "https://lexi-server-production.up.railway.app";
+const MODEL          = "gpt-4o-mini";
 
-// Проверка, что сервер жив (откроется по адресу сервера в браузере)
+// ── Telegram Bot API helper ──
+async function tgCall(method, body) {
+  if (!BOT_TOKEN) return;
+  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).catch(e => console.error("TG error:", e));
+}
+
+// ── Webhook от Telegram ──
+app.post("/webhook", async (req, res) => {
+  res.sendStatus(200); // отвечаем сразу — Telegram не ждёт
+  const msg = req.body?.message;
+  if (!msg) return;
+
+  if (msg.text === "/start" || msg.text?.startsWith("/start ")) {
+    await tgCall("sendMessage", {
+      chat_id: msg.chat.id,
+      parse_mode: "HTML",
+      text:
+        `✨ <b>Привет, ${msg.from?.first_name || "друг"}!</b>\n\n` +
+        `<b>Lexi</b> — твой личный ИИ-тренажёр для изучения слов.\n\n` +
+        `<b>Как это работает:</b>\n` +
+        `📌 Вставляешь любой текст — статью, субтитры, переписку\n` +
+        `🤖 ИИ выделяет ключевые слова и делает карточки\n` +
+        `🎯 Учишь слова в режиме флэшкарточек или теста\n` +
+        `📈 Отслеживаешь прогресс\n\n` +
+        `Поддерживает <b>12 языков</b>: EN, ES, DE, FR, IT, ZH, JA, KO, PT, TR, AR и другие.\n\n` +
+        `👇 Нажми, чтобы начать:`,
+      reply_markup: {
+        inline_keyboard: [[
+          { text: "🎓 Открыть Lexi", web_app: { url: APP_URL } }
+        ]]
+      }
+    });
+  }
+});
+
+// Проверка, что сервер жив
 app.get("/", (req, res) => {
   res.send("Lexi AI server is running ✓");
 });
