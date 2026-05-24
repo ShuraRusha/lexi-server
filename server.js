@@ -10,10 +10,15 @@
 
 import express from "express";
 import cors from "cors";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 app.use(cors());                       // разрешаем запросы из браузера/Telegram
 app.use(express.json({ limit: "1mb" })); // принимаем JSON, ограничиваем размер
+app.use(express.static(join(__dirname, "public"))); // фронтенд Telegram Mini App
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const MODEL = "gpt-4o-mini";           // дёшево, быстро, хорошо отдаёт JSON
