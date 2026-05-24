@@ -1061,8 +1061,6 @@ function haptic(type){ try{ if(type==='ok') tg.HapticFeedback.notificationOccurr
 const userName = tg?.initDataUnsafe?.user?.first_name || "друг";
 document.getElementById('home-name').textContent = userName;
 
-/* приветствие по времени */
-(function(){ const h=new Date().getHours(); let g="Добрый день"; if(h<6)g="Доброй ночи"; else if(h<12)g="Доброе утро"; else if(h>=18)g="Добрый вечер"; document.getElementById('greet-time').textContent=g; })();
 
 /* ════════════ ДАННЫЕ ════════════ */
 const SEED_DECKS = [
