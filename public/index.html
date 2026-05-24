@@ -1211,12 +1211,14 @@ function closeModeModal(){
   _activeDeck = null;
 }
 function startModeFlash(){
+  const deck = _activeDeck; // сохраняем ДО закрытия модала
   closeModeModal();
-  startStudy(_activeDeck.id);
+  if(deck) startStudy(deck.id);
 }
 function startModeTest(){
+  const deck = _activeDeck; // сохраняем ДО закрытия модала
   closeModeModal();
-  startTest(_activeDeck);
+  if(deck) startTest(deck);
 }
 function shareActiveDeck(){
   if(!_activeDeck) return;
