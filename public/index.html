@@ -78,27 +78,28 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 @keyframes screenIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
 
 /* ───── ФИРМЕННАЯ ПЛАШКА СВЕРХУ ───── */
-/* Sticky: остаётся видима при скролле и перекрывает контент под ней */
 .topbar{
   position:sticky;
   top:0;
   z-index:100;
   background:var(--paper);
-  /* Telegram автоматически инжектит --tg-safe-area-inset-top и
-     --tg-content-safe-area-inset-top. Используем их как первый приоритет,
-     JS-переменную --tg-ct как второй, env() как fallback. */
   padding:calc(
     var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) +
     var(--tg-content-safe-area-inset-top, var(--tg-ct, 0px)) +
-    14px
-  ) 22px 12px;
-  /* лёгкая тень отделяет шапку от контента при скролле */
+    10px
+  ) 20px 10px;
+  display:flex;
+  align-items:center;
+  gap:10px;
   box-shadow:0 1px 0 var(--line);
 }
-.eyebrow{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:8px;}
-.eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft);}
-.h-title{font-size:34px;font-weight:600;letter-spacing:-.03em;line-height:1.05;}
+/* маленький акцент-бейдж слева */
+.eyebrow{display:none;} /* убираем старый eyebrow */
+.topbar-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);flex-shrink:0;}
+.h-title{font-size:18px;font-weight:800;letter-spacing:-.02em;line-height:1.2;flex:1;}
 .h-title .ac{color:var(--accent);}
+/* правая часть шапки — слот для кнопок */
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
 
 /* ───── HERO / progress банер ───── */
 .hero{margin:18px 18px 26px;border-radius:var(--r-xl);background:var(--ink);color:#fff;padding:26px 24px 24px;position:relative;overflow:hidden;box-shadow:var(--shadow-lg);}
@@ -723,8 +724,9 @@ textarea{min-height:128px;line-height:1.5;}
   <!-- ═══════════ ГЛАВНАЯ ═══════════ -->
   <div id="screen-home" class="screen active">
     <div class="topbar">
-      <div class="eyebrow"><span class="dot"></span><span id="greet-time">Добрый день</span></div>
+      <span class="topbar-dot"></span>
       <div class="h-title">Привет, <span class="ac" id="home-name">друг</span></div>
+      <div class="topbar-right"><span style="font-size:12px;font-weight:700;color:var(--muted)" id="greet-time">Добрый день</span></div>
     </div>
 
     <div class="hero" id="tour-hero">
@@ -815,7 +817,7 @@ textarea{min-height:128px;line-height:1.5;}
   <!-- ═══════════ ПРОГРЕСС ═══════════ -->
   <div id="screen-progress" class="screen">
     <div class="topbar">
-      <div class="eyebrow"><span class="dot"></span>Твоя статистика</div>
+      <span class="topbar-dot"></span>
       <div class="h-title">Прогресс</div>
     </div>
     <div class="streak">
@@ -837,7 +839,7 @@ textarea{min-height:128px;line-height:1.5;}
   <!-- ═══════════ БИБЛИОТЕКА НАБОРОВ ═══════════ -->
   <div id="screen-library" class="screen">
     <div class="topbar">
-      <div class="eyebrow"><span class="dot"></span>Все наборы</div>
+      <span class="topbar-dot"></span>
       <div class="h-title">Библиотека</div>
     </div>
     <div class="lib-search">
@@ -855,7 +857,7 @@ textarea{min-height:128px;line-height:1.5;}
   <!-- ═══════════ СОЗДАНИЕ / AI ═══════════ -->
   <div id="screen-create" class="screen">
     <div class="topbar">
-      <div class="eyebrow"><span class="dot"></span>Новый набор</div>
+      <span class="topbar-dot"></span>
       <div class="h-title">Создать <span class="ac">набор</span></div>
     </div>
     <div class="create-tabs">
