@@ -70,7 +70,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 @keyframes screenIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
 
 /* ───── ШАПКА ───── */
-.topbar{padding:calc(env(safe-area-inset-top) + 22px) 22px 6px;}
+.topbar{padding:calc(env(safe-area-inset-top) + var(--tg-ct, 0px) + 22px) 22px 6px;}
 .eyebrow{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:8px;}
 .eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft);}
 .h-title{font-size:34px;font-weight:600;letter-spacing:-.03em;line-height:1.05;}
@@ -120,7 +120,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 /* ───── ОНБОРДИНГ ───── */
 #onboard{position:fixed;inset:0;z-index:1000;background:var(--paper);display:none;flex-direction:column;}
 #onboard.show{display:flex;}
-.ob-screen{flex:1;display:none;flex-direction:column;padding:calc(env(safe-area-inset-top) + 40px) 28px 30px;animation:obIn .55s var(--ease) both;}
+.ob-screen{flex:1;display:none;flex-direction:column;padding:calc(env(safe-area-inset-top) + var(--tg-ct, 0px) + 40px) 28px 30px;animation:obIn .55s var(--ease) both;}
 .ob-screen.active{display:flex;}
 @keyframes obIn{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:none;}}
 .ob-dots{display:flex;gap:7px;margin-bottom:auto;}
@@ -157,7 +157,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 
 /* ───── STUDY ───── */
 #screen-study{padding:0;}
-.study-top{display:flex;align-items:center;gap:14px;padding:calc(env(safe-area-inset-top) + 16px) 22px 4px;}
+.study-top{display:flex;align-items:center;gap:14px;padding:calc(env(safe-area-inset-top) + var(--tg-ct, 0px) + 16px) 22px 4px;}
 .iconbtn{width:42px;height:42px;border-radius:13px;background:var(--paper-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:19px;transition:transform .25s var(--ease);flex-shrink:0;}
 .iconbtn:active{transform:scale(.92);}
 .study-name{font-size:15px;font-weight:700;letter-spacing:-.01em;}
@@ -191,7 +191,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 
 /* ───── РЕЗУЛЬТАТ ───── */
 #screen-result{display:none;}
-#screen-result.active{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:40px 28px;text-align:center;}
+#screen-result.active{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:calc(env(safe-area-inset-top) + var(--tg-ct, 0px) + 40px) 28px calc(env(safe-area-inset-bottom) + 40px);text-align:center;}
 .res-ring{width:150px;height:150px;position:relative;margin-bottom:26px;}
 .res-ring svg{transform:rotate(-90deg);}
 .res-ring .rc-num{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
@@ -333,7 +333,7 @@ textarea{min-height:128px;line-height:1.5;}
 .hs-step-s{font-size:12.5px;color:var(--muted);font-weight:600;margin-top:3px;}
 
 /* ── test mode screen ── */
-.test-topbar{display:flex;align-items:center;gap:12px;padding:calc(env(safe-area-inset-top)+18px) 18px 14px;}
+.test-topbar{display:flex;align-items:center;gap:12px;padding:calc(env(safe-area-inset-top) + var(--tg-ct, 0px) + 18px) 18px 14px;}
 .test-back{font-size:14px;font-weight:700;color:var(--accent);flex-shrink:0;}
 .test-prog-wrap{flex:1;height:5px;background:var(--line);border-radius:5px;overflow:hidden;}
 .test-prog-wrap i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--violet));border-radius:5px;transition:width .4s var(--ease);}
@@ -965,18 +965,33 @@ const tg = window.Telegram?.WebApp;
    Пока строка пустая — работает встроенная демо-логика (без интернета). */
 const AI_SERVER = "https://lexi-server-production.up.railway.app";
 
+/* ── Telegram: полный экран без случайного закрытия ── */
+function applyTopInset(){
+  // contentSafeAreaInset.top = высота шапки Telegram в fullscreen (без notch)
+  const ct = tg?.contentSafeAreaInset?.top ?? 0;
+  document.documentElement.style.setProperty('--tg-ct', ct + 'px');
+}
+
 if(tg){
   tg.ready();
-  tg.expand();                              // развернуть на всю высоту
-  try { tg.requestFullscreen(); } catch(e){} // полный экран (TG 8.0+)
-  try { tg.enableClosingConfirmation(); } catch(e){} // подтверждение перед закрытием
-  try { tg.setHeaderColor('#0B0F1A'); } catch(e){}   // тёмная шапка как у "Плати по миру"
+  tg.expand();
+  try { tg.requestFullscreen(); }           catch(e){} // полный экран (TG 8.0+)
+  try { tg.disableVerticalSwipes(); }       catch(e){} // отключить свайп-закрытие
+  try { tg.enableClosingConfirmation(); }   catch(e){} // подтверждение перед закрытием
+  try { tg.setHeaderColor('#0B0F1A'); }     catch(e){} // тёмная шапка
   try { tg.setBackgroundColor('#F7F6F2'); } catch(e){}
+
+  applyTopInset(); // применить сразу
+  // обновлять при изменении viewport (поворот, переход в fullscreen)
+  tg.onEvent('viewportChanged', applyTopInset);
+  tg.onEvent('fullscreenChanged', applyTopInset);
+  tg.onEvent('safeAreaChanged', applyTopInset);
+  tg.onEvent('contentSafeAreaChanged', applyTopInset);
 
   // скрыть баннер если ярлык уже добавлен
   try {
     tg.checkHomeScreenStatus(status => {
-      if(status === 'added' || status === 'unknown') dismissHsBanner(true);
+      if(status === 'added') dismissHsBanner(true);
     });
   } catch(e){}
 }

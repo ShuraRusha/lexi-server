@@ -171,6 +171,17 @@ app.post("/api/parse", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log("Lexi AI server started on port " + PORT);
+  // Установить текст кнопки меню бота при каждом старте
+  if (BOT_TOKEN) {
+    await tgCall("setChatMenuButton", {
+      menu_button: {
+        type: "web_app",
+        text: "Открыть",
+        web_app: { url: APP_URL }
+      }
+    }).catch(() => {});
+    console.log("Menu button text set to 'Открыть'");
+  }
 });
