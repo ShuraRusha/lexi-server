@@ -841,11 +841,6 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{
 .swipe-hint{position:absolute;top:14px;left:50%;transform:translateX(-50%);font-size:12px;font-weight:700;color:var(--muted);background:rgba(246,244,239,.9);backdrop-filter:blur(6px);padding:7px 14px;border-radius:var(--r-pill);display:flex;align-items:center;gap:6px;opacity:.9;z-index:5;animation:swipeWiggle 2.4s ease-in-out infinite;border:1px solid var(--line);}
 @keyframes swipeWiggle{0%,100%{transform:translateX(-50%);}25%{transform:translateX(calc(-50% - 7px));}75%{transform:translateX(calc(-50% + 7px));}}
 /* индикаторы свайпа влево/вправо поверх карточки */
-.swipe-badge{position:absolute;top:50%;transform:translateY(-50%);font-size:14px;font-weight:800;letter-spacing:.04em;padding:9px 16px;border-radius:14px;opacity:0;transition:opacity .15s;z-index:6;pointer-events:none;}
-.swipe-badge.left{left:20px;background:var(--rose-soft);color:var(--rose);transform:translateY(-50%) rotate(-12deg);}
-.swipe-badge.right{right:20px;background:var(--mint-soft);color:var(--mint);transform:translateY(-50%) rotate(12deg);}
-.flashwrap.drag-left .swipe-badge.left{opacity:1;}
-.flashwrap.drag-right .swipe-badge.right{opacity:1;}
 
 /* ═══════════ WELCOME (первый заход) ═══════════ */
 #welcome{position:fixed;inset:0;z-index:1500;background:var(--paper);display:none;flex-direction:column;}
@@ -1066,8 +1061,6 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{
     <div class="track"><i id="study-track" style="width:0%"></i></div>
     <div class="study-stage">
       <div class="flashwrap" id="flashwrap" onclick="flipFlash()">
-        <span class="swipe-badge left">НЕ ЗНАЛ</span>
-        <span class="swipe-badge right">ЗНАЛ!</span>
         <div class="flash" id="flash">
           <div class="fface front">
             <div class="f-pos" id="f-pos">существительное</div>
