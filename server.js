@@ -185,15 +185,42 @@ app.post("/api/parse", async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log("Lexi AI server started on port " + PORT);
-  // Установить текст кнопки меню бота при каждом старте
-  if (BOT_TOKEN) {
-    await tgCall("setChatMenuButton", {
-      menu_button: {
-        type: "web_app",
-        text: "Открыть",
-        web_app: { url: APP_URL }
-      }
-    }).catch(() => {});
-    console.log("Menu button text set to 'Открыть'");
-  }
+
+  if (!BOT_TOKEN) return;
+
+  // 1. Кнопка меню → открывает Mini App
+  await tgCall("setChatMenuButton", {
+    menu_button: { type: "web_app", text: "Открыть", web_app: { url: APP_URL } }
+  }).catch(() => {});
+  console.log("Menu button set");
+
+  // 2. Краткое описание — показывается в профиле бота (до 120 символов)
+  await tgCall("setMyShortDescription", {
+    short_description:
+      "ИИ превращает любой текст в флэшкарточки. Учи слова из статей, субтитров и переписок — 12 языков."
+  }).catch(() => {});
+  console.log("Short description set");
+
+  // 3. Полное описание — показывается в чате ДО нажатия кнопки Start (до 512 символов)
+  await tgCall("setMyDescription", {
+    description:
+      "Lexi — языковой тренажёр, который работает с твоим контентом.\n\n" +
+      "Вместо заучивания чужих списков — вставляешь любой текст на нужном языке, " +
+      "и за несколько секунд получаешь готовые карточки: слово, перевод, транскрипция, пример.\n\n" +
+      "Затем учишь в удобном формате:\n" +
+      "🃏 Флэшкарточки — листай и оценивай себя\n" +
+      "✍️ Тест — пиши перевод по памяти\n" +
+      "📊 Прогресс — видишь рост с каждой сессией\n\n" +
+      "Поддерживает 12 языков: EN, DE, ES, FR, IT, ZH, JA, KO, PT, TR, AR и другие.\n\n" +
+      "Нажми «Начать» — первые карточки готовы через минуту."
+  }).catch(() => {});
+  console.log("Description set");
+
+  // 4. Список команд бота (отображается в меню / подсказке)
+  await tgCall("setMyCommands", {
+    commands: [
+      { command: "start", description: "Открыть Lexi — учим слова с ИИ" }
+    ]
+  }).catch(() => {});
+  console.log("Commands set");
 });
