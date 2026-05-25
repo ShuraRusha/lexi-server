@@ -1743,39 +1743,64 @@ function rate(r){
 }
 
 /* ─── Свайп карточки (Tinder-like) ─── */
-let drag={active:false,x0:0,dx:0};
+// locked: null = направление ещё не определено, 'h' = горизонталь, 'v' = вертикаль
+let drag={active:false,x0:0,y0:0,dx:0,locked:null};
+
 function initSwipe(){
   const wrap=document.getElementById('flashwrap');
   const flash=document.getElementById('flash');
   if(!wrap || wrap.dataset.sw) return; wrap.dataset.sw='1';
 
-  const start=(x)=>{ if(!cur.flipped) return; drag.active=true; drag.x0=x; drag.dx=0; flash.style.transition='none'; };
-  const move=(x)=>{
-    if(!drag.active) return;
-    drag.dx=x-drag.x0;
-    const rot=drag.dx*0.06;
-    flash.style.transform='rotateY(180deg) translateX('+(-drag.dx)+'px)'; // back повёрнут — компенсируем знак
-    // подсветка направления
-    wrap.classList.toggle('drag-right', drag.dx>40);
-    wrap.classList.toggle('drag-left', drag.dx<-40);
+  // Начало касания — запоминаем X и Y
+  const start=(x,y)=>{
+    if(!cur.flipped) return;
+    drag={active:true,x0:x,y0:y,dx:0,locked:null};
+    flash.style.transition='none';
   };
+
+  // Движение — определяем направление по первым 6px
+  const move=(e,x,y)=>{
+    if(!drag.active) return;
+    const dx=x-drag.x0, dy=y-drag.y0;
+
+    // Определяем направление один раз
+    if(!drag.locked && (Math.abs(dx)>6 || Math.abs(dy)>6)){
+      drag.locked = Math.abs(dx) >= Math.abs(dy) ? 'h' : 'v';
+    }
+
+    if(drag.locked==='h'){
+      // Горизонтальный свайп: блокируем скролл страницы
+      e.preventDefault();
+      drag.dx=dx;
+      flash.style.transform='rotateY(180deg) translateX('+(-dx)+'px)';
+      wrap.classList.toggle('drag-right', dx>40);
+      wrap.classList.toggle('drag-left',  dx<-40);
+    }
+    // Вертикальный свайп: ничего не делаем — страница скроллится сама
+  };
+
   const end=()=>{
-    if(!drag.active) return; drag.active=false;
+    if(!drag.active) return;
+    drag.active=false;
     flash.style.transition='';
     wrap.classList.remove('drag-right','drag-left');
-    const TH=90;
-    if(drag.dx>TH){ flyOut(1); }
-    else if(drag.dx<-TH){ flyOut(-1); }
-    else { flash.style.transform='rotateY(180deg)'; } // вернуть на место
+    if(drag.locked==='h'){
+      if(drag.dx>90)       flyOut(1);
+      else if(drag.dx<-90) flyOut(-1);
+      else                 flash.style.transform='rotateY(180deg)'; // вернуть на место
+    }
+    drag.locked=null;
   };
-  // touch
-  wrap.addEventListener('touchstart',e=>start(e.touches[0].clientX),{passive:true});
-  wrap.addEventListener('touchmove',e=>move(e.touches[0].clientX),{passive:true});
-  wrap.addEventListener('touchend',end);
+
+  // touch — touchmove: passive:false, чтобы preventDefault() работал
+  wrap.addEventListener('touchstart', e=>start(e.touches[0].clientX, e.touches[0].clientY), {passive:true});
+  wrap.addEventListener('touchmove',  e=>move(e, e.touches[0].clientX, e.touches[0].clientY), {passive:false});
+  wrap.addEventListener('touchend',   end, {passive:true});
+
   // mouse (для теста на компе)
-  wrap.addEventListener('mousedown',e=>start(e.clientX));
-  window.addEventListener('mousemove',e=>move(e.clientX));
-  window.addEventListener('mouseup',end);
+  wrap.addEventListener('mousedown', e=>start(e.clientX, e.clientY));
+  window.addEventListener('mousemove', e=>{ if(drag.active) move(e, e.clientX, e.clientY); });
+  window.addEventListener('mouseup', end);
 }
 function flyOut(dir){
   const flash=document.getElementById('flash');
