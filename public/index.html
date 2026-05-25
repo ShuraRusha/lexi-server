@@ -345,6 +345,14 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
   transition:background .2s;
 }
 .f-listen:active{background:rgba(255,255,255,.18);}
+/* ── Цветной оверлей свайпа ── */
+.flash-tint{
+  position:absolute;inset:0;border-radius:inherit;
+  pointer-events:none;z-index:1;
+  background:transparent;
+  /* плавное возвращение к прозрачному при отпускании */
+  transition:background .32s var(--ease);
+}
 
 /* ── Кнопки оценки ── */
 .rate{display:flex;gap:10px;width:100%;opacity:0;transform:translateY(14px);transition:all .4s var(--ease);pointer-events:none;}
@@ -1065,6 +1073,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{
             <div class="f-tap">👆 нажми, чтобы проверить</div>
           </div>
           <div class="fface back">
+            <div id="flash-tint" class="flash-tint"></div>
             <div class="f-trans" id="f-trans">—</div>
             <div class="f-ex" id="f-ex">—</div>
             <div class="f-listen" onclick="event.stopPropagation();speak()">🔊 Послушать</div>
@@ -1772,7 +1781,21 @@ function initSwipe(){
       // Горизонтальный свайп: блокируем скролл страницы
       e.preventDefault();
       drag.dx=dx;
-      flash.style.transform='rotateY(180deg) translateX('+(-dx)+'px)';
+
+      // лёгкий наклон карточки — dir*6deg (знак инвертирован из-за rotateY(180deg))
+      const rot=dx*0.055;
+      flash.style.transform='rotateY(180deg) translateX('+(-dx)+'px) rotate('+(-rot)+'deg)';
+
+      // постепенная заливка цветом: начинаем с 20px, максимум на 110px
+      const tint=document.getElementById('flash-tint');
+      if(tint){
+        const p=Math.min(1, Math.max(0,(Math.abs(dx)-20)/110));
+        tint.style.transition='none'; // мгновенно во время drag
+        tint.style.background = dx>0
+          ? `rgba(18,168,110,${p*0.52})`   // зелёный → знал
+          : `rgba(226,48,64,${p*0.52})`;   // красный → не знал
+      }
+
       wrap.classList.toggle('drag-right', dx>40);
       wrap.classList.toggle('drag-left',  dx<-40);
     }
@@ -1787,7 +1810,12 @@ function initSwipe(){
     if(drag.locked==='h'){
       if(drag.dx>90)       flyOut(1);
       else if(drag.dx<-90) flyOut(-1);
-      else                 flash.style.transform='rotateY(180deg)'; // вернуть на место
+      else {
+        // Вернуть на место + плавно убрать цвет
+        flash.style.transform='rotateY(180deg)';
+        const tint=document.getElementById('flash-tint');
+        if(tint){ tint.style.transition='background .32s var(--ease)'; tint.style.background='transparent'; }
+      }
     }
     drag.locked=null;
   };
@@ -1804,14 +1832,23 @@ function initSwipe(){
 }
 function flyOut(dir){
   const flash=document.getElementById('flash');
-  flash.style.transition='transform .35s var(--ease), opacity .35s';
-  flash.style.transform='rotateY(180deg) translateX('+(dir*-500)+'px) rotate('+(dir*-18)+'deg)';
+  const tint=document.getElementById('flash-tint');
+
+  // Доводим тинт до максимума перед вылетом
+  if(tint){
+    tint.style.transition='background .15s';
+    tint.style.background = dir>0 ? 'rgba(18,168,110,.55)' : 'rgba(226,48,64,.55)';
+  }
+
+  flash.style.transition='transform .38s var(--ease), opacity .38s';
+  flash.style.transform='rotateY(180deg) translateX('+(dir*-520)+'px) rotate('+(dir*-20)+'deg)';
   flash.style.opacity='0';
   haptic(dir>0?'ok':'light');
   setTimeout(()=>{
     flash.style.transition='none'; flash.style.transform=''; flash.style.opacity='';
+    if(tint){ tint.style.transition='none'; tint.style.background='transparent'; }
     rate(dir>0?'yes':'no');
-  },330);
+  },360);
 }
 function finishStudy(){
   const d=cur.deck;
