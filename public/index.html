@@ -329,7 +329,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
   content:"";position:absolute;inset:0;border-radius:inherit;
   background:radial-gradient(ellipse 100% 80% at 100% -10%,rgba(59,94,255,.6),transparent 55%);
 }
-.fface.back>*{position:relative;z-index:1;}
+.fface.back>*:not(.flash-tint){position:relative;z-index:1;}
 .f-pos{font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:14px;}
 .f-word{font-family:'Fraunces',serif;font-size:54px;font-weight:500;letter-spacing:-.035em;text-align:center;line-height:1.02;}
 .f-tr{font-size:16px;color:var(--accent);font-weight:700;margin-top:10px;letter-spacing:.01em;}
@@ -346,11 +346,14 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 }
 .f-listen:active{background:rgba(255,255,255,.18);}
 /* ── Цветной оверлей свайпа ── */
+/* !important нужен: .fface.back>* ставит position:relative на всех детей */
 .flash-tint{
-  position:absolute;inset:0;border-radius:inherit;
-  pointer-events:none;z-index:1;
+  position:absolute !important;
+  inset:0;
+  border-radius:inherit;
+  pointer-events:none;
+  z-index:5;             /* выше ::before, ниже текста не нужно — текст читается сквозь тинт */
   background:transparent;
-  /* плавное возвращение к прозрачному при отпускании */
   transition:background .32s var(--ease);
 }
 
