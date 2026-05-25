@@ -429,6 +429,9 @@ textarea{min-height:128px;line-height:1.5;}
 .test-skip{font-size:13px;font-weight:700;color:var(--muted);margin-top:6px;display:inline-block;}
 .test-next-btn{width:100%;background:var(--ink);color:#fff;font-size:16px;font-weight:700;padding:17px;border-radius:var(--r-md);margin-top:14px;transition:transform .25s var(--ease);}
 .test-next-btn:active{transform:scale(.97);}
+.test-submit-btn{width:100%;background:var(--accent);color:#fff;font-size:16px;font-weight:700;padding:17px;border-radius:var(--r-md);margin-top:14px;transition:transform .25s var(--ease),opacity .2s;}
+.test-submit-btn:active{transform:scale(.97);}
+.hidden{display:none!important;}
 
 /* ───── PAYWALL ───── */
 #paywall{position:fixed;inset:0;z-index:1100;background:rgba(11,15,26,.55);backdrop-filter:blur(8px);display:none;align-items:flex-end;animation:fade .3s ease;}
@@ -951,10 +954,13 @@ textarea{min-height:128px;line-height:1.5;}
       <div class="test-phonetic" id="test-phonetic"></div>
     </div>
     <div class="test-body">
-      <input id="test-inp" class="test-inp" type="text" placeholder="Введи перевод..." autocomplete="off" autocorrect="off" spellcheck="false" oninput="onTestInput()">
+      <input id="test-inp" class="test-inp" type="text" placeholder="Введи перевод..."
+        autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
+        oninput="onTestInputChange()" onkeydown="onTestKeydown(event)">
       <div class="test-feedback" id="test-feedback"></div>
+      <button class="test-submit-btn hidden" id="test-submit" onclick="submitTest()">Ответить ✓</button>
       <button class="test-next-btn hidden" id="test-next" onclick="nextTestCard()">Далее →</button>
-      <button class="test-skip" onclick="skipTestCard()">Пропустить</button>
+      <button class="test-skip" id="test-skip-btn" onclick="skipTestCard()">Пропустить</button>
     </div>
   </div>
 
@@ -1300,42 +1306,84 @@ function renderTestCard(){
   const inp = document.getElementById('test-inp');
   inp.value=''; inp.className='test-inp'; inp.disabled=false;
   document.getElementById('test-feedback').textContent='';
+  document.getElementById('test-submit').classList.add('hidden');
   document.getElementById('test-next').classList.add('hidden');
-  document.getElementById('test-inp').focus();
+  document.getElementById('test-skip-btn').style.display='inline-block';
+  inp.focus();
 }
-function onTestInput(){
+
+// Разбиваем перевод на варианты: «встреча / собрание / совещание» → ['встреча','собрание','совещание']
+function getAnswerVariants(t){
+  return t.split(/[\/,;|]/).map(v=>v.trim().toLowerCase()).filter(v=>v.length>0);
+}
+
+// Считаем ответ верным, если совпадает хотя бы с одним вариантом
+function isAnswerCorrect(answer, cardT){
+  const a = answer.trim().toLowerCase();
+  if(!a) return false;
+  return getAnswerVariants(cardT).some(v =>
+    v === a ||
+    similarity(a, v) >= 0.82 ||
+    (v.includes(a) && a.length >= 3)
+  );
+}
+
+// Обработчик печати — только показываем/скрываем кнопку «Ответить»
+function onTestInputChange(){
   const inp = document.getElementById('test-inp');
-  const answer = inp.value.trim().toLowerCase();
-  const correct = testState.cards[testState.i].t.toLowerCase();
-  // проверяем частичное совпадение (≥80% символов)
-  if(answer.length >= 2 && (correct.startsWith(answer) || similarity(answer, correct) >= 0.8)){
-    commitTestAnswer(true);
+  const hasText = inp.value.trim().length > 0;
+  document.getElementById('test-submit').classList.toggle('hidden', !hasText);
+}
+
+// Enter = нажатие «Ответить»
+function onTestKeydown(e){
+  if(e.key === 'Enter'){
+    e.preventDefault();
+    const submitBtn = document.getElementById('test-submit');
+    const nextBtn   = document.getElementById('test-next');
+    if(!submitBtn.classList.contains('hidden')) submitTest();
+    else if(!nextBtn.classList.contains('hidden')) nextTestCard();
   }
 }
-function commitTestAnswer(auto){
+
+function submitTest(){
   const inp = document.getElementById('test-inp');
-  const answer = inp.value.trim().toLowerCase();
+  if(inp.disabled) return; // уже проверено
+  commitTestAnswer();
+}
+
+function commitTestAnswer(){
+  const inp = document.getElementById('test-inp');
+  const answer = inp.value.trim();
   const c = testState.cards[testState.i];
-  const correct = c.t.toLowerCase();
-  const isOk = similarity(answer, correct) >= 0.75 || correct.includes(answer) && answer.length>=3;
+  const isOk = isAnswerCorrect(answer, c.t);
   inp.disabled = true;
+  document.getElementById('test-submit').classList.add('hidden');
+  document.getElementById('test-skip-btn').style.display='none';
   if(isOk){
     inp.classList.add('ok');
     document.getElementById('test-feedback').innerHTML='<span class="test-correct">✓ Правильно!</span>';
     testState.res.ok++;
   } else {
     inp.classList.add('err');
-    document.getElementById('test-feedback').innerHTML='<span style="color:var(--rose)">✗ Правильно: </span><b>'+c.t+'</b>';
+    // Показываем все допустимые варианты
+    const variants = getAnswerVariants(c.t).join(' / ');
+    document.getElementById('test-feedback').innerHTML=
+      '<span style="color:var(--rose)">✗ Правильно: </span><b>'+variants+'</b>';
     testState.res.err++;
   }
   document.getElementById('test-next').classList.remove('hidden');
   haptic(isOk?'ok':'err');
 }
+
 function skipTestCard(){
   const c = testState.cards[testState.i];
   const inp = document.getElementById('test-inp');
+  const variants = getAnswerVariants(c.t).join(' / ');
   inp.disabled=true; inp.classList.add('err');
-  document.getElementById('test-feedback').innerHTML='Ответ: <b>'+c.t+'</b>';
+  document.getElementById('test-feedback').innerHTML='Ответ: <b>'+variants+'</b>';
+  document.getElementById('test-submit').classList.add('hidden');
+  document.getElementById('test-skip-btn').style.display='none';
   testState.res.err++;
   document.getElementById('test-next').classList.remove('hidden');
   haptic('light');
