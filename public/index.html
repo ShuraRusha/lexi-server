@@ -813,6 +813,55 @@ textarea{min-height:128px;line-height:1.5;}
 .tile .t-prog{margin-top:10px;height:5px;border-radius:5px;background:rgba(255,255,255,.25);overflow:hidden;position:relative;z-index:1;}
 .tile .t-prog i{display:block;height:100%;background:#fff;border-radius:5px;}
 .tile .t-lock{position:absolute;top:12px;right:12px;font-size:11px;font-weight:800;background:rgba(0,0,0,.3);padding:4px 10px;border-radius:var(--r-pill);letter-spacing:.04em;z-index:2;}
+/* ── Swipe-обёртка для библиотеки: открывает зону действия под плиткой ── */
+.tile-wrap{position:relative;overflow:hidden;border-radius:var(--r-lg);}
+.tile-swipe-bg{
+  position:absolute;inset:0;border-radius:inherit;
+  display:flex;align-items:center;
+  padding:0 22px;
+  opacity:0;transition:opacity .15s;z-index:0;
+  pointer-events:none;
+}
+.tile-swipe-bg.delete{background:linear-gradient(270deg,#E23040,#FCEAEB);justify-content:flex-end;color:#fff;}
+.tile-swipe-bg.pin{background:linear-gradient(90deg,#3B5EFF,#ECF0FF);justify-content:flex-start;color:#fff;}
+.tile-swipe-bg .ic{font-size:32px;filter:drop-shadow(0 2px 6px rgba(0,0,0,.25));}
+.tile-wrap.show-delete .tile-swipe-bg.delete{opacity:1;}
+.tile-wrap.show-pin    .tile-swipe-bg.pin{opacity:1;}
+.tile-wrap .tile{position:relative;z-index:1;}
+.tile-wrap.dragging .tile{transition:none;}
+.tile .t-pin{position:absolute;top:12px;right:12px;font-size:16px;z-index:2;filter:drop-shadow(0 1px 3px rgba(0,0,0,.3));}
+/* «Закреплённые / Все наборы» — лёгкий divider в списке */
+.lib-section-label{
+  grid-column:1 / -1;
+  font-size:12px;font-weight:800;letter-spacing:.08em;
+  color:var(--muted);text-transform:uppercase;
+  margin:6px 4px -4px;
+  display:flex;align-items:center;gap:8px;
+}
+.lib-section-label::after{content:"";flex:1;height:1px;background:var(--line);}
+/* ── Undo Toast для удаления ── */
+.undo-toast{
+  position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);
+  background:var(--ink);color:#fff;
+  padding:12px 8px 12px 20px;border-radius:16px;
+  display:flex;align-items:center;gap:14px;
+  font-size:14px;font-weight:600;
+  box-shadow:var(--shadow-lg);
+  opacity:0;transition:all .35s var(--ease);
+  z-index:1300;
+  max-width:92%;
+}
+.undo-toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.undo-toast .ut-msg{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.undo-toast .ut-btn{
+  background:var(--accent);color:#fff;
+  font-size:13px;font-weight:800;
+  padding:8px 14px;border-radius:var(--r-pill);
+  min-height:36px;
+  transition:transform .15s;
+}
+.undo-toast .ut-btn:active{transform:scale(.94);}
+.undo-toast .ut-progress{position:absolute;left:0;bottom:0;height:2px;background:var(--accent);border-radius:0 0 16px 16px;width:100%;transform-origin:right;}
 .lib-empty{text-align:center;padding:50px 30px;color:var(--muted);}
 .lib-empty .le-ic{font-size:46px;margin-bottom:14px;}
 .lib-empty .le-t{font-size:16px;font-weight:700;color:var(--ink);margin-bottom:6px;}
@@ -1324,6 +1373,11 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{
   </div>
 
   <div class="toast" id="toast"></div>
+  <div class="undo-toast" id="undo-toast">
+    <span class="ut-msg" id="undo-msg"></span>
+    <button class="ut-btn" id="undo-btn" onclick="undoDelete()">Отменить</button>
+    <i class="ut-progress" id="undo-prog"></i>
+  </div>
 
   <!-- ═══════════ НАВИГАЦИЯ ═══════════ -->
   <nav class="nav">
@@ -1541,19 +1595,132 @@ function startModeTest(){
   closeModeModal();
   if(deck) startTest(deck);
 }
-function shareActiveDeck(){
+/* ════════════ ПОДЕЛИТЬСЯ НАБОРОМ (PRD: share_cards) ════════════
+   1. POST /api/share — сервер сохраняет деку, возвращает t.me-ссылку.
+   2. Открываем нативный Telegram share-sheet через openTelegramLink. */
+async function shareActiveDeck(){
   if(!_activeDeck) return;
   const d = _activeDeck;
-  const text = d.icon+' '+d.name+'\n'+d.cards.length+' карточек в приложении Lexi';
-  if(tg && tg.shareMessage){
-    try{ tg.shareMessage({text}); return; }catch(e){}
-  }
-  // fallback — копируем в буфер
+  closeModeModal();
+  haptic('light');
+  toast('Готовлю ссылку…');
+
+  // Чистим набор — только нужные поля идут в shared payload
+  const payload = {
+    name:  d.name,
+    icon:  d.icon || '📚',
+    desc:  d.desc || '',
+    level: d.level || 'B1',
+    grad:  d.grad || ['#3B5EFF','#7250FF'],
+    cards: (d.cards||[]).map(c => ({
+      w:c.w, lang:c.lang||'en', t:c.t||'', tr:c.tr||'',
+      pos:c.pos||'', lvl:c.lvl||'B1', ex:c.ex||''
+    })),
+  };
+
   try{
-    navigator.clipboard.writeText(text);
-    toast('Название скопировано в буфер');
-  }catch(e){ toast('Поделиться: '+text); }
-  haptic('ok');
+    const resp = await fetch(AI_SERVER.replace(/\/$/,'') + '/api/share', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ deck: payload }),
+    });
+    if(!resp.ok) throw new Error('share api failed');
+    const { uuid, share_url } = await resp.json();
+    if(!share_url) throw new Error('no url');
+
+    const text = `${payload.icon} Набор «${payload.name}» — ${payload.cards.length} карточек в Lexi`;
+    const tgShareLink = `https://t.me/share/url?url=${encodeURIComponent(share_url)}&text=${encodeURIComponent(text)}`;
+
+    if(tg && tg.openTelegramLink){
+      tg.openTelegramLink(tgShareLink);
+      haptic('ok');
+      return;
+    }
+    // Fallback — копируем ссылку в буфер
+    try{
+      await navigator.clipboard.writeText(share_url);
+      toast('Ссылка скопирована');
+    }catch(e){ toast(share_url); }
+    haptic('ok');
+  }catch(e){
+    console.error(e);
+    toast('Не удалось создать ссылку');
+  }
+}
+
+/* ════════════ ПРИЁМ ПОДЕЛЁННОГО НАБОРА (PRD: receive flow) ════════════
+   На старте читаем ?set=<uuid> из URL ИЛИ tg.initDataUnsafe.start_param.
+   Если есть — тянем с сервера, проверяем дубль по source_set_id,
+   автоматически добавляем в библиотеку, открываем экран набора. */
+function getSharedSetIdFromContext(){
+  // 1) Telegram start_param (приоритет)
+  let param = tg?.initDataUnsafe?.start_param || '';
+  if(param.startsWith('set_')) return param.slice(4);
+  // 2) URL ?set=
+  try{
+    const fromUrl = new URLSearchParams(location.search).get('set');
+    if(fromUrl) return fromUrl;
+  }catch(e){}
+  return null;
+}
+
+async function handleSharedSetIfAny(){
+  const uuid = getSharedSetIdFromContext();
+  if(!uuid) return;
+
+  // Дедуп: уже добавляли этот набор?
+  const existing = STATE.decks.find(x => x.source_set_id === uuid);
+  if(existing){
+    toast('Этот набор уже есть в вашей библиотеке');
+    haptic('light');
+    setTimeout(()=>openDeck(existing), 600);
+    cleanShareParamFromUrl();
+    return;
+  }
+
+  try{
+    const r = await fetch(AI_SERVER.replace(/\/$/,'') + '/api/share/' + encodeURIComponent(uuid));
+    if(!r.ok){
+      toast(r.status===404 ? 'Набор недоступен или был удалён' : 'Не удалось загрузить набор');
+      cleanShareParamFromUrl();
+      return;
+    }
+    const { deck } = await r.json();
+    if(!deck || !Array.isArray(deck.cards) || !deck.cards.length){
+      toast('Набор пустой или повреждён');
+      cleanShareParamFromUrl();
+      return;
+    }
+    const newDeck = {
+      ...deck,
+      id: 'shared_' + Date.now(),
+      source_set_id: uuid,
+      from_share: true,
+      added_at: Date.now(),
+    };
+    STATE.decks.unshift(newDeck);
+    saveState();
+    haptic('ok');
+    toast(`✓ Набор «${newDeck.name}» добавлен в библиотеку`);
+    setTimeout(()=>openDeck(newDeck), 700);
+  }catch(e){
+    console.error(e);
+    toast('Ошибка при добавлении набора');
+  }finally{
+    cleanShareParamFromUrl();
+  }
+}
+
+function cleanShareParamFromUrl(){
+  // Убираем ?set= чтобы при перезагрузке набор не добавлялся снова
+  try{
+    if(!history.replaceState) return;
+    const u = new URL(location.href);
+    if(u.searchParams.has('set')){
+      u.searchParams.delete('set');
+      history.replaceState({}, '', u.toString());
+    }
+  }catch(e){}
 }
 
 /* ════════════ РЕЖИМ ТЕСТА ════════════ */
@@ -2332,10 +2499,15 @@ function renderLibrary(){
   const q=(document.getElementById('lib-q')?.value||'').toLowerCase().trim();
   let list=all.filter(d=>{
     if(q && !d.name.toLowerCase().includes(q)) return false;
-    if(libFilter==='mine') return d.id.startsWith('ai_')||d.id.startsWith('man_');
+    if(libFilter==='mine') return d.id.startsWith('ai_')||d.id.startsWith('man_')||d.id.startsWith('shared_');
     if(libFilter!=='all') return d.level===libFilter;
     return true;
   });
+
+  // Сортируем: сначала закреплённые (по pinned_at desc), потом остальные
+  const pinned   = list.filter(d => d.pinned).sort((a,b)=>(b.pinned_at||0)-(a.pinned_at||0));
+  const ordinary = list.filter(d => !d.pinned);
+
   const grid=document.getElementById('lib-grid');
   if(!grid) return;
   grid.innerHTML='';
@@ -2345,22 +2517,200 @@ function renderLibrary(){
     return;
   }
   grid.style.display='grid';
-  list.forEach(d=>{
+
+  // Renderer для одной плитки — обёртывает в swipe-wrap (только для своих наборов)
+  const renderTile = (d) => {
     const pr=STATE.progress[d.id]||{learned:0};
     const pct=Math.round((pr.learned/d.cards.length)*100);
     const locked=d.premium && !STATE.isPremium;
-    const el=document.createElement('div');
-    el.className='tile';
-    el.style.background='linear-gradient(155deg,'+d.grad[0]+','+d.grad[1]+')';
-    el.onclick=()=>openDeck(d);
-    el.innerHTML=
+    const ownDeck = d.id.startsWith('ai_')||d.id.startsWith('man_')||d.id.startsWith('shared_');
+
+    const tile=document.createElement('div');
+    tile.className='tile';
+    tile.style.background='linear-gradient(155deg,'+d.grad[0]+','+d.grad[1]+')';
+    tile.innerHTML=
       (locked?'<span class="t-lock">🔒 PRO</span>':'')+
+      (d.pinned?'<span class="t-pin">📌</span>':'')+
       '<div class="t-ic">'+d.icon+'</div>'+
       '<div><div class="t-name">'+d.name+'</div>'+
       '<div class="t-meta">'+d.level+' · '+d.cards.length+' слов · '+pr.learned+' выучено</div>'+
       '<div class="t-prog"><i style="width:'+pct+'%"></i></div></div>';
-    grid.appendChild(el);
+
+    if(!ownDeck){
+      // Рекомендованные — без свайпа, простой клик
+      tile.onclick=()=>openDeck(d);
+      return tile;
+    }
+
+    // Свайпуемая обёртка для своих наборов
+    const wrap=document.createElement('div');
+    wrap.className='tile-wrap';
+    wrap.innerHTML =
+      '<div class="tile-swipe-bg delete"><span class="ic">🗑️</span></div>'+
+      '<div class="tile-swipe-bg pin"><span class="ic">'+(d.pinned?'📌':'📌')+'</span></div>';
+    wrap.appendChild(tile);
+    attachTileSwipe(wrap, tile, d);
+    return wrap;
+  };
+
+  if(pinned.length){
+    if(ordinary.length){
+      const lab=document.createElement('div'); lab.className='lib-section-label'; lab.textContent='📌 Закреплённые';
+      grid.appendChild(lab);
+    }
+    pinned.forEach(d => grid.appendChild(renderTile(d)));
+    if(ordinary.length){
+      const lab=document.createElement('div'); lab.className='lib-section-label'; lab.textContent='Все наборы';
+      grid.appendChild(lab);
+    }
+  }
+  ordinary.forEach(d => grid.appendChild(renderTile(d)));
+}
+
+/* ════════════ SWIPE-ЖЕСТЫ НА ПЛИТКЕ БИБЛИОТЕКИ (PRD §11, §12) ════════════
+   Влево  → удалить с Undo Toast на 5 секунд
+   Вправо → закрепить/открепить (моментально, с toast) */
+function attachTileSwipe(wrap, tile, deck){
+  let st = { active:false, x0:0, y0:0, dx:0, locked:null, w:0 };
+
+  const start = (x,y) => {
+    if(st.active) return;
+    st = { active:true, x0:x, y0:y, dx:0, locked:null, w:wrap.clientWidth };
+    wrap.classList.add('dragging');
+  };
+
+  const move = (e, x, y) => {
+    if(!st.active) return;
+    const dx = x-st.x0, dy = y-st.y0;
+    if(!st.locked && (Math.abs(dx)>8 || Math.abs(dy)>8)){
+      st.locked = Math.abs(dx) >= Math.abs(dy) ? 'h' : 'v';
+    }
+    if(st.locked === 'h'){
+      e.preventDefault();
+      st.dx = dx;
+      tile.style.transform = `translateX(${dx}px)`;
+      // подсветка зоны по направлению
+      wrap.classList.toggle('show-delete', dx < -20);
+      wrap.classList.toggle('show-pin',    dx >  20);
+    }
+  };
+
+  const end = () => {
+    if(!st.active) return;
+    const dx = st.dx, w = st.w, locked = st.locked;
+    st.active = false;
+    wrap.classList.remove('dragging');
+
+    const threshold = w * 0.5;
+    if(locked === 'h' && Math.abs(dx) >= threshold){
+      // Сработало
+      if(dx < 0){
+        // Удаление с Undo
+        tile.style.transition = 'transform .25s var(--ease), opacity .25s';
+        tile.style.transform = `translateX(-${w}px)`;
+        tile.style.opacity = '0';
+        haptic('err');
+        setTimeout(()=>{ deleteDeckWithUndo(deck); }, 230);
+        return;
+      } else {
+        // Закрепить / открепить
+        toggleDeckPin(deck);
+        // вернём плитку на место с анимацией
+        tile.style.transition = 'transform .3s var(--ease)';
+        tile.style.transform = '';
+        setTimeout(()=>{ tile.style.transition=''; renderLibrary(); }, 320);
+        return;
+      }
+    }
+    // Snap back
+    tile.style.transition = 'transform .3s var(--ease)';
+    tile.style.transform = '';
+    wrap.classList.remove('show-delete','show-pin');
+    setTimeout(()=>{ tile.style.transition=''; }, 320);
+
+    // Если жест не активирован и движение было меньше 8px — считаем кликом
+    if(!locked && Math.abs(dx) < 8){ openDeck(deck); }
+  };
+
+  wrap.addEventListener('touchstart', e=>start(e.touches[0].clientX, e.touches[0].clientY), {passive:true});
+  wrap.addEventListener('touchmove',  e=>move(e, e.touches[0].clientX, e.touches[0].clientY), {passive:false});
+  wrap.addEventListener('touchend',   end, {passive:true});
+
+  // мышь — для дебага на компе
+  wrap.addEventListener('mousedown', e => { start(e.clientX, e.clientY); });
+  const mm = e => { if(st.active) move(e, e.clientX, e.clientY); };
+  const mu = () => { if(st.active) end(); window.removeEventListener('mousemove', mm); window.removeEventListener('mouseup', mu); };
+  wrap.addEventListener('mousedown', () => {
+    window.addEventListener('mousemove', mm);
+    window.addEventListener('mouseup', mu);
   });
+}
+
+/* ════════════ УДАЛЕНИЕ + UNDO (PRD §11.3) ════════════ */
+let _undoState = null; // { deck, index, timer }
+
+function deleteDeckWithUndo(deck){
+  const idx = STATE.decks.findIndex(x => x.id === deck.id);
+  if(idx === -1){ toast('Не удалось удалить'); return; }
+  const removed = STATE.decks.splice(idx, 1)[0];
+  saveState();
+  renderLibrary();
+
+  // Показываем Undo Toast на 5 сек
+  const ut    = document.getElementById('undo-toast');
+  const utMsg = document.getElementById('undo-msg');
+  const utPr  = document.getElementById('undo-prog');
+  utMsg.textContent = `Набор «${removed.name}» удалён`;
+  ut.classList.add('show');
+
+  // прогресс-бар обратного отсчёта
+  utPr.style.transition = 'none';
+  utPr.style.transform = 'scaleX(1)';
+  // forces reflow
+  utPr.offsetWidth;
+  utPr.style.transition = 'transform 5s linear';
+  utPr.style.transform = 'scaleX(0)';
+
+  if(_undoState?.timer) clearTimeout(_undoState.timer);
+  _undoState = {
+    deck: removed,
+    index: idx,
+    timer: setTimeout(()=>{
+      ut.classList.remove('show');
+      _undoState = null;
+    }, 5000)
+  };
+}
+
+function undoDelete(){
+  if(!_undoState) return;
+  const { deck, index, timer } = _undoState;
+  clearTimeout(timer);
+  // Вставляем обратно на то же место (если индекс ушёл за пределы — в конец)
+  const safeIdx = Math.min(index, STATE.decks.length);
+  STATE.decks.splice(safeIdx, 0, deck);
+  _undoState = null;
+  document.getElementById('undo-toast').classList.remove('show');
+  saveState();
+  renderLibrary();
+  haptic('ok');
+}
+
+/* ════════════ ЗАКРЕПИТЬ / ОТКРЕПИТЬ ════════════ */
+function toggleDeckPin(deck){
+  const d = STATE.decks.find(x => x.id === deck.id);
+  if(!d) return;
+  if(d.pinned){
+    d.pinned = false;
+    d.pinned_at = 0;
+    toast('Набор откреплён');
+  } else {
+    d.pinned = true;
+    d.pinned_at = Date.now();
+    toast('📌 Набор закреплён');
+  }
+  saveState();
+  haptic('ok');
 }
 function goCreateMan(){
   goCreate();
@@ -2531,6 +2881,9 @@ function loadStateThenStart(){
     }
     updateStreakOnOpen();
     bootUI();
+    // PRD: проверяем, не открыли ли приложение по share-ссылке (?set=<uuid>)
+    // Делаем после bootUI, чтобы UI был готов к toast/openDeck
+    setTimeout(handleSharedSetIfAny, 200);
   };
 
   // читаем локальную копию сразу (она точно есть и свежая)

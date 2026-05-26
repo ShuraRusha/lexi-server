@@ -13,6 +13,7 @@ import express from "express";
 import cors from "cors";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import { randomUUID } from "crypto";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -26,14 +27,52 @@ const BOT_TOKEN      = process.env.BOT_TOKEN;
 const APP_URL        = "https://lexi-server-production.up.railway.app";
 const MODEL          = "gpt-4o-mini";
 
+// Будет заполнен в app.listen через getMe — для построения t.me/<bot>?start=… ссылок
+let BOT_USERNAME = null;
+
 // ── Telegram Bot API helper ──
 async function tgCall(method, body) {
-  if (!BOT_TOKEN) return;
-  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  }).catch(e => console.error("TG error:", e));
+  if (!BOT_TOKEN) return null;
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json().catch(() => null);
+    if (!r.ok) console.error("TG error:", method, data);
+    return data;
+  } catch (e) {
+    console.error("TG fetch error:", method, e);
+    return null;
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+//  SHARE — поделиться набором карточек (PRD: prd_share_cards)
+//  Хранилище в памяти: uuid → { deck, created_at, source_user_id }
+//  TTL: 90 дней. На каждый деплой обнуляется (Railway).
+//  Для production-нагрузки нужно заменить на БД (Postgres/Redis).
+// ════════════════════════════════════════════════════════════
+const SHARED_DECKS = new Map();
+const SHARE_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 дней
+const MAX_DECK_BYTES = 120_000;                 // защита от больших наборов
+
+// Чистим устаревшие наборы раз в час
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of SHARED_DECKS) {
+    if (now - v.created_at > SHARE_TTL_MS) SHARED_DECKS.delete(k);
+  }
+}, 60 * 60 * 1000);
+
+// Экранируем HTML — для безопасных сообщений в Telegram
+function escapeHtml(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 // ── Webhook от Telegram ──
@@ -44,6 +83,56 @@ app.post("/webhook", async (req, res) => {
 
   if (msg.text === "/start" || msg.text?.startsWith("/start ")) {
     const name = msg.from?.first_name || "друг";
+
+    // ── Кто-то поделился набором: /start set_<uuid> ──
+    const startParam = (msg.text || "").split(/\s+/)[1] || "";
+    if (startParam.startsWith("set_")) {
+      const uuid = startParam.slice(4);
+      const entry = SHARED_DECKS.get(uuid);
+
+      if (entry) {
+        const d = entry.deck;
+        const cardCount = Array.isArray(d.cards) ? d.cards.length : 0;
+        const preview = (d.cards || []).slice(0, 3)
+          .map(c => `• <b>${escapeHtml(c.w)}</b> — ${escapeHtml((c.t || "").split("/")[0].trim())}`)
+          .join("\n");
+
+        await tgCall("sendMessage", {
+          chat_id: msg.chat.id,
+          parse_mode: "HTML",
+          text:
+            `📚 <b>Вам поделились набором карточек!</b>\n\n` +
+            `${escapeHtml(d.icon || "📚")} <b>${escapeHtml(d.name || "Набор")}</b>\n` +
+            `${cardCount} карточек${d.level ? " · " + escapeHtml(d.level) : ""}\n\n` +
+            (preview ? `<b>Пример:</b>\n${preview}\n\n` : "") +
+            `Нажми кнопку ниже — набор автоматически добавится в твою библиотеку Lexi 👇`,
+          reply_markup: {
+            inline_keyboard: [[
+              { text: "📥 Открыть и добавить", web_app: { url: `${APP_URL}?set=${uuid}` } }
+            ]]
+          }
+        });
+        return;
+      }
+
+      // Набор удалён / не существует → graceful 404
+      await tgCall("sendMessage", {
+        chat_id: msg.chat.id,
+        parse_mode: "HTML",
+        text:
+          `❌ <b>Набор недоступен</b>\n\n` +
+          `Этот набор больше не существует или был удалён автором. ` +
+          `Попроси отправителя поделиться заново, или открой Lexi со своими наборами:`,
+        reply_markup: {
+          inline_keyboard: [[
+            { text: "🚀 Открыть Lexi", web_app: { url: APP_URL } }
+          ]]
+        }
+      });
+      return;
+    }
+
+    // ── Обычный /start без параметров ──
     await tgCall("sendMessage", {
       chat_id: msg.chat.id,
       parse_mode: "HTML",
@@ -78,6 +167,69 @@ app.post("/webhook", async (req, res) => {
 // Проверка, что сервер жив
 app.get("/", (req, res) => {
   res.send("Lexi AI server is running ✓");
+});
+
+// ════════════════════════════════════════════════════════════
+//  POST /api/share — пользователь делится своим набором.
+//  Принимает: { deck: {...} }
+//  Отдаёт:   { uuid, share_url } — ссылку на t.me/<bot>?start=set_<uuid>
+// ════════════════════════════════════════════════════════════
+app.post("/api/share", (req, res) => {
+  try {
+    const deck = req.body?.deck;
+    if (!deck || !deck.name || !Array.isArray(deck.cards) || !deck.cards.length) {
+      return res.status(400).json({ error: "Некорректный набор" });
+    }
+    // Лимит размера — защита от злоупотреблений
+    const size = JSON.stringify(deck).length;
+    if (size > MAX_DECK_BYTES) {
+      return res.status(413).json({ error: "Набор слишком большой для шаринга" });
+    }
+
+    const uuid = randomUUID();
+    SHARED_DECKS.set(uuid, {
+      deck: {
+        name: String(deck.name).slice(0, 80),
+        icon: String(deck.icon || "📚").slice(0, 8),
+        desc: String(deck.desc || "").slice(0, 200),
+        level: String(deck.level || "B1").slice(0, 5),
+        grad: Array.isArray(deck.grad) ? deck.grad.slice(0, 2) : ["#3B5EFF", "#7250FF"],
+        cards: deck.cards.map(c => ({
+          w:    String(c.w    || "").slice(0, 100),
+          lang: String(c.lang || "en").slice(0, 5),
+          t:    String(c.t    || "").slice(0, 200),
+          tr:   String(c.tr   || "").slice(0, 80),
+          pos:  String(c.pos  || "").slice(0, 30),
+          lvl:  String(c.lvl  || "B1").slice(0, 5),
+          ex:   String(c.ex   || "").slice(0, 240),
+        })),
+      },
+      created_at: Date.now(),
+    });
+
+    // Telegram-нативная ссылка через бота — open сценарий «бот → web_app кнопка»
+    const share_url = BOT_USERNAME
+      ? `https://t.me/${BOT_USERNAME}?start=set_${uuid}`
+      : `${APP_URL}?set=${uuid}`;
+
+    return res.json({ uuid, share_url });
+  } catch (e) {
+    console.error("share error:", e);
+    return res.status(500).json({ error: "Ошибка при создании ссылки" });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+//  GET /api/share/:uuid — получатель открыл ссылку, фронт тянет деку.
+//  Отдаёт: { deck, uuid } или 404 «Набор недоступен»
+// ════════════════════════════════════════════════════════════
+app.get("/api/share/:uuid", (req, res) => {
+  const uuid = String(req.params.uuid || "").trim();
+  const entry = SHARED_DECKS.get(uuid);
+  if (!entry) {
+    return res.status(404).json({ error: "Набор недоступен или был удалён" });
+  }
+  return res.json({ uuid, deck: entry.deck });
 });
 
 // ── Основной маршрут: разбор текста в карточки ──
@@ -252,7 +404,12 @@ app.listen(PORT, async () => {
 
   if (!BOT_TOKEN) return;
 
-  // 0. Регистрируем webhook — говорим Telegram, куда слать обновления
+  // 0a. Узнаём username бота — нужен для генерации share-ссылок t.me/<bot>?start=...
+  const me = await tgCall("getMe", {});
+  BOT_USERNAME = me?.result?.username || null;
+  console.log("Bot username:", BOT_USERNAME || "(unknown)");
+
+  // 0b. Регистрируем webhook — говорим Telegram, куда слать обновления
   await tgCall("setWebhook", {
     url: `${APP_URL}/webhook`,
     allowed_updates: ["message"]
