@@ -188,6 +188,13 @@ app.listen(PORT, async () => {
 
   if (!BOT_TOKEN) return;
 
+  // 0. Регистрируем webhook — говорим Telegram, куда слать обновления
+  await tgCall("setWebhook", {
+    url: `${APP_URL}/webhook`,
+    allowed_updates: ["message"]
+  }).catch(e => console.error("setWebhook error:", e));
+  console.log("Webhook registered:", `${APP_URL}/webhook`);
+
   // 1. Кнопка меню → открывает Mini App
   await tgCall("setChatMenuButton", {
     menu_button: { type: "web_app", text: "Открыть", web_app: { url: APP_URL } }
