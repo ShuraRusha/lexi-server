@@ -206,9 +206,7 @@ app.post("/api/parse", async (req, res) => {
     // Удаляем дубли по словарной форме (нормализованной)
     const seen = new Set();
 
-    // Безопасный верхний предел — против runaway-ответов AI (50 карточек хватит на любой текст до 6000 симв.)
-    const HARD_CAP = 50;
-
+    // Лимита нет — сколько ИИ нашёл полезной лексики, столько и отдаём
     const clean = cards
       .filter(c => c && c.w && String(c.w).trim())
       .map(c => ({
@@ -226,8 +224,7 @@ app.post("/api/parse", async (req, res) => {
         if (seen.has(key)) return false;               // дубль
         seen.add(key);
         return true;
-      })
-      .slice(0, HARD_CAP);
+      });
 
     return res.json({
       cards: clean,
