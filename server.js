@@ -13,7 +13,7 @@ import express from "express";
 import cors from "cors";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
-import { randomUUID } from "crypto";
+import { randomUUID, createHmac } from "crypto";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -64,7 +64,46 @@ setInterval(() => {
   for (const [k, v] of SHARED_DECKS) {
     if (now - v.created_at > SHARE_TTL_MS) SHARED_DECKS.delete(k);
   }
+  for (const [k, v] of PENDING_DECKS) {
+    if (now - v.created_at > PENDING_TTL_MS) PENDING_DECKS.delete(k);
+  }
 }, 60 * 60 * 1000);
+
+// ════════════════════════════════════════════════════════════
+//  PENDING_DECKS — очередь «когда пользователь откроет приложение,
+//  автоматически добавить ему набор». Заполняется когда юзер
+//  нажимает Start в боте по share-ссылке.
+//  Ключ: telegram user_id (string), значение: { uuid, created_at }
+// ════════════════════════════════════════════════════════════
+const PENDING_DECKS = new Map();
+const PENDING_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 дней
+
+// ── Верификация Telegram Mini App initData (HMAC-SHA256) ──
+// https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
+function verifyInitData(initData) {
+  if (!initData || !BOT_TOKEN) return null;
+  try {
+    const params = new URLSearchParams(initData);
+    const hash = params.get("hash");
+    if (!hash) return null;
+    params.delete("hash");
+
+    const dataCheckString = [...params.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}=${v}`)
+      .join("\n");
+
+    const secret = createHmac("sha256", "WebAppData").update(BOT_TOKEN).digest();
+    const computed = createHmac("sha256", secret).update(dataCheckString).digest("hex");
+    if (computed !== hash) return null;
+
+    const userRaw = params.get("user");
+    if (!userRaw) return null;
+    return JSON.parse(userRaw); // { id, first_name, ... }
+  } catch (e) {
+    return null;
+  }
+}
 
 // Экранируем HTML — для безопасных сообщений в Telegram
 function escapeHtml(s) {
@@ -91,6 +130,15 @@ app.post("/webhook", async (req, res) => {
       const entry = SHARED_DECKS.get(uuid);
 
       if (entry) {
+        // Запоминаем: при следующем открытии Mini App — автоматом добавить
+        // Работает для существующих пользователей И для новых (после первого запуска).
+        if (msg.from?.id) {
+          PENDING_DECKS.set(String(msg.from.id), {
+            uuid,
+            created_at: Date.now(),
+          });
+        }
+
         const d = entry.deck;
         const cardCount = Array.isArray(d.cards) ? d.cards.length : 0;
         const preview = (d.cards || []).slice(0, 3)
@@ -105,10 +153,10 @@ app.post("/webhook", async (req, res) => {
             `${escapeHtml(d.icon || "📚")} <b>${escapeHtml(d.name || "Набор")}</b>\n` +
             `${cardCount} карточек${d.level ? " · " + escapeHtml(d.level) : ""}\n\n` +
             (preview ? `<b>Пример:</b>\n${preview}\n\n` : "") +
-            `Нажми кнопку ниже — набор автоматически добавится в твою библиотеку Lexi 👇`,
+            `✅ Готово! Открой Lexi кнопкой ниже — набор автоматически появится в твоей библиотеке 👇`,
           reply_markup: {
             inline_keyboard: [[
-              { text: "📥 Открыть и добавить", web_app: { url: `${APP_URL}?set=${uuid}` } }
+              { text: "🚀 Открыть Lexi", web_app: { url: APP_URL } }
             ]]
           }
         });
@@ -230,6 +278,37 @@ app.get("/api/share/:uuid", (req, res) => {
     return res.status(404).json({ error: "Набор недоступен или был удалён" });
   }
   return res.json({ uuid, deck: entry.deck });
+});
+
+// ════════════════════════════════════════════════════════════
+//  POST /api/pending-deck — Mini App при старте спрашивает:
+//  «есть ли набор, который ждёт меня от бота?»
+//  Проверяем initData (HMAC), смотрим PENDING_DECKS[user_id],
+//  отдаём набор и удаляем из очереди (consume-once).
+// ════════════════════════════════════════════════════════════
+app.post("/api/pending-deck", (req, res) => {
+  const initData = req.body?.initData;
+  const user = verifyInitData(initData);
+  if (!user) {
+    return res.status(401).json({ error: "initData invalid", deck: null });
+  }
+  const key = String(user.id);
+  const pending = PENDING_DECKS.get(key);
+  if (!pending) return res.json({ deck: null });
+
+  const entry = SHARED_DECKS.get(pending.uuid);
+  if (!entry) {
+    // Набор удалён — чистим pending
+    PENDING_DECKS.delete(key);
+    return res.json({ deck: null });
+  }
+
+  // Consume — забираем один раз, чтобы не добавлялось при каждом открытии
+  PENDING_DECKS.delete(key);
+  return res.json({
+    deck: entry.deck,
+    source_set_id: pending.uuid,
+  });
 });
 
 // ── Основной маршрут: разбор текста в карточки ──

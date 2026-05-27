@@ -1723,6 +1723,53 @@ function cleanShareParamFromUrl(){
   }catch(e){}
 }
 
+/* ════════════ ПЕНДИНГ-НАБОРЫ ИЗ БОТА ════════════
+   Когда пользователь нажал Start в боте по share-ссылке, сервер запомнил
+   user_id → deck_uuid. При ЛЮБОМ открытии Mini App (через меню бота,
+   inline-кнопку, что угодно) фронт спрашивает у сервера: «есть пендинги?»
+   Если есть — добавляем набор автоматически. Работает и для новых юзеров. */
+async function checkPendingDeckFromBot(){
+  if(!tg || !tg.initData) return;
+
+  try{
+    const resp = await fetch(AI_SERVER.replace(/\/$/,'') + '/api/pending-deck', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ initData: tg.initData }),
+    });
+    if(!resp.ok) return;
+    const data = await resp.json();
+    if(!data || !data.deck) return;
+
+    const uuid = data.source_set_id;
+    const deck = data.deck;
+
+    // Дедуп по source_set_id — никаких дублей
+    const existing = STATE.decks.find(x => x.source_set_id === uuid);
+    if(existing){
+      toast('Этот набор уже есть в вашей библиотеке');
+      setTimeout(()=>openDeck(existing), 600);
+      return;
+    }
+
+    const newDeck = {
+      ...deck,
+      id: 'shared_' + Date.now(),
+      source_set_id: uuid,
+      from_share: true,
+      added_at: Date.now(),
+    };
+    STATE.decks.unshift(newDeck);
+    saveState();
+    haptic('ok');
+    toast(`✓ Набор «${newDeck.name}» добавлен в библиотеку`);
+    setTimeout(()=>openDeck(newDeck), 700);
+  }catch(e){
+    // Тихо игнорируем — это не критичный путь
+    console.warn('pending-deck check failed:', e);
+  }
+}
+
 /* ════════════ РЕЖИМ ТЕСТА ════════════ */
 let testState = {deck:null, cards:[], i:0, res:{ok:0, err:0}};
 
@@ -2881,9 +2928,13 @@ function loadStateThenStart(){
     }
     updateStreakOnOpen();
     bootUI();
-    // PRD: проверяем, не открыли ли приложение по share-ссылке (?set=<uuid>)
-    // Делаем после bootUI, чтобы UI был готов к toast/openDeck
-    setTimeout(handleSharedSetIfAny, 200);
+    // PRD: после загрузки проверяем оба источника shared-набора
+    // 1) URL ?set=<uuid> — прямая ссылка на мини-приложение
+    // 2) Пендинг-очередь на сервере — установлена когда юзер жал Start в боте
+    setTimeout(()=>{
+      handleSharedSetIfAny();         // ?set= в URL
+      checkPendingDeckFromBot();      // пендинг от Start в боте
+    }, 250);
   };
 
   // читаем локальную копию сразу (она точно есть и свежая)
